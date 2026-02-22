@@ -12,62 +12,50 @@ with st.sidebar:
     sight_rad = st.number_input("Sight Extension (mm)", value=880)
     target_size_cm = st.selectbox("Face Size (cm)", [40, 60, 80, 122], index=0)
 
-# --- 2. UPLOAD & ORIENTATION ---
+# --- 2. UPLOAD & FIX ROTATION ---
 uploaded_file = st.file_uploader("Upload Target Photo", type=['jpg', 'png', 'jpeg'])
 
 if uploaded_file:
+    # Open image
     img_orig = Image.open(uploaded_file)
+    
+    # FIX: This line reads the EXIF data and rotates the image to be upright
     img_orig = ImageOps.exif_transpose(img_orig).convert("RGB")
+    
     width, height = img_orig.size
     
     st.subheader("1. Align the Crosshairs")
-
-    # Creating a layout: [Left Slider] [Image] [Right Slider]
-    col_left, col_img, col_right = st.columns([1, 4, 1])
-
-    with col_left:
-        st.write("🔵")
-        # Inverting slider so 100 is at the top (more natural for archery)
-        gy_raw = st.select_slider("Gold Y", options=list(range(100, -1, -1)), value=50, key="gy")
-        st.caption("Gold Up/Down")
-
-    with col_img:
-        # We define positions here so they update live
+    
+    col_sliders_a, col_sliders_b = st.columns(2)
+    with col_sliders_a:
+        st.write("🔵 **GOLD**")
         gx = st.slider("Gold Horizontal", 0, 100, 50, key="gx")
+        gy = st.slider("Gold Vertical", 0, 100, 50, key="gy")
+    with col_sliders_b:
+        st.write("🔴 **GROUP**")
         rx = st.slider("Group Horizontal", 0, 100, 55, key="rx")
-        
-        # Draw on a copy of the image
-        img_draw = img_orig.copy()
-        draw = ImageDraw.Draw(img_draw)
-        
-        def draw_cross(draw_obj, x_pct, y_pct, color):
-            x, y = (x_pct / 100) * width, (y_pct / 100) * height
-            draw_obj.line([(x-60, y), (x+60, y)], fill="black", width=12)
-            draw_obj.line([(x, y-60), (x, y+60)], fill="black", width=12)
-            draw_obj.line([(x-50, y), (x+50, y)], fill=color, width=8)
-            draw_obj.line([(x, y-50), (x, y+50)], fill=color, width=8)
+        ry = st.slider("Group Vertical", 0, 100, 45, key="ry")
 
-        draw_cross(draw, gx, gy_raw, "blue")
-        draw_cross(draw, rx, 45, "red") # Placeholder for Red Y while setting up logic
-        
-        # We need the actual Red Y from the right column, so we define it before drawing
-        # But since Streamlit runs top-down, we'll use session_state or a simple order tweak
-        
-    with col_right:
-        st.write("🔴")
-        ry_raw = st.select_slider("Group Y", options=list(range(100, -1, -1)), value=45, key="ry")
-        st.caption("Group Up/Down")
+    # Drawing
+    draw = ImageDraw.Draw(img_orig)
+    def draw_cross(draw_obj, x_pct, y_pct, color):
+        x, y = (x_pct / 100) * width, (y_pct / 100) * height
+        draw_obj.line([(x-60, y), (x+60, y)], fill="black", width=12)
+        draw_obj.line([(x, y-60), (x, y+60)], fill="black", width=12)
+        draw_obj.line([(x-50, y), (x+50, y)], fill=color, width=8)
+        draw_obj.line([(x, y-50), (x, y+50)], fill=color, width=8)
 
-    # Re-draw with the correct RY now that we have it
-    draw_cross(draw, rx, ry_raw, "red")
-    col_img.image(img_draw, width='stretch')
+    draw_cross(draw, gx, gy, "blue")
+    draw_cross(draw, rx, ry, "red")
+
+    st.image(img_orig, width='stretch')
 
     # --- 3. CALCULATION ---
     if st.button("Calculate Adjustment", type="primary"):
+        # Scale logic
         pix_per_cm = width / target_size_cm
         dx_pix = ((rx/100)*width) - ((gx/100)*width)
-        # Using the raw values directly
-        dy_pix = ((gy_raw/100)*height) - ((ry_raw/100)*height) 
+        dy_pix = ((gy/100)*height) - ((ry/100)*height) 
         
         err_x_mm = (dx_pix / pix_per_cm) * 10
         err_y_mm = (dy_pix / pix_per_cm) * 10
